@@ -4,11 +4,6 @@ from pathlib import Path
 import streamlit as st
 from PIL import Image, ImageDraw
 
-try:
-    import cairosvg
-except ImportError:  # pragma: no cover
-    cairosvg = None
-
 # Feste Platzhalterkoordinaten für die Vorlage
 AVATAR_POSITION = (100, 120)
 AVATAR_SIZE = (180, 180)
@@ -87,11 +82,14 @@ def place_image(base: Image.Image, overlay: Image.Image, position: tuple[int, in
 def load_logo_image(logo_file) -> Image.Image:
     """Lädt ein Logo-Bild, inklusive SVG-Konvertierung nach PNG."""
     if logo_file.type == "image/svg+xml":
-        if cairosvg is None:
+        try:
+            import cairosvg
+        except ImportError as exc:
             raise RuntimeError(
                 "SVG-Unterstützung erfordert das Paket cairosvg. Bitte installiere es."
-            )
-        png_bytes = cairosvg.svg2png(url=logo_file)
+            ) from exc
+
+        png_bytes = cairosvg.svg2png(bytestring=logo_file.read())
         return Image.open(io.BytesIO(png_bytes)).convert("RGBA")
 
     return Image.open(logo_file).convert("RGBA")
