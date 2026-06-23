@@ -19,8 +19,10 @@ LOGO_CONFIGS = [
 ]
 
 
-def load_template(path: str = "template.png") -> Image.Image:
+def load_template(path: str | None = None) -> Image.Image:
     """Lädt das statische Hintergrundbild unverändert."""
+    if path is None:
+        path = Path(__file__).parent / "template.png"
     template_path = Path(path)
     if not template_path.exists():
         raise FileNotFoundError(
@@ -101,9 +103,8 @@ def main() -> None:
         "Dieses Tool verwendet `template.png` als unverändertes Hintergrundbild und ersetzt nur definierte Bereiche."
     )
 
-    template_path = Path("template.png")
     try:
-        template_image = load_template(str(template_path))
+        template_image = load_template()
     except FileNotFoundError as exc:
         st.error(str(exc))
         return
