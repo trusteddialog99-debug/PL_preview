@@ -84,12 +84,20 @@ def load_uploaded_image(uploaded_file) -> Image.Image:
     if uploaded_file.type == "image/svg+xml":
         try:
             import cairosvg
-        except ImportError as exc:
+        except Exception as exc:
             raise RuntimeError(
-                "SVG-Unterstützung erfordert das Paket cairosvg. Bitte installiere es."
+                "SVG-Unterstützung erfordert das Paket cairosvg und die native Cairo-Bibliothek. "
+                "Bitte installiere diese Abhängigkeiten oder nutze eine PNG/JPG-Datei."
             ) from exc
 
-        png_bytes = cairosvg.svg2png(bytestring=uploaded_file.read())
+        try:
+            png_bytes = cairosvg.svg2png(bytestring=uploaded_file.read())
+        except Exception as exc:
+            raise RuntimeError(
+                "SVG konnte nicht gerendert werden. Bitte prüfe, ob die SVG-Datei gültig ist "
+                "und dass cairosvg mit Cairo korrekt installiert ist."
+            ) from exc
+
         return Image.open(io.BytesIO(png_bytes)).convert("RGBA")
 
     return Image.open(uploaded_file).convert("RGBA")
@@ -145,8 +153,20 @@ def main() -> None:
         st.markdown("---")
         st.caption("Nur die definierten Platzhalter werden dynamisch ersetzt.")
 
-    avatar_image = load_uploaded_image(avatar_file) if avatar_file is not None else None
-    logo_image = load_uploaded_image(logo_file) if logo_file is not None else None
+    avatar_image = None
+    logo_image = None
+    upload_error = None
+
+    try:
+        if avatar_file is not None:
+            avatar_image = load_uploaded_image(avatar_file)
+        if logo_file is not None:
+            logo_image = load_uploaded_image(logo_file)
+    except RuntimeError as exc:
+        upload_error = str(exc)
+
+    if upload_error is not None:
+        st.error(upload_error)
 
     final_image = render_composite(template_image, avatar_image, logo_image)
 
