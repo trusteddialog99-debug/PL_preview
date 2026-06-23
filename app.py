@@ -4,6 +4,11 @@ from pathlib import Path
 import streamlit as st
 from PIL import Image, ImageDraw
 
+try:
+    import cairosvg
+except ImportError:  # pragma: no cover
+    cairosvg = None
+
 # Feste Platzhalterkoordinaten für die Vorlage
 AVATAR_POSITION = (100, 120)
 AVATAR_SIZE = (180, 180)
@@ -79,6 +84,19 @@ def place_image(base: Image.Image, overlay: Image.Image, position: tuple[int, in
     base.paste(overlay, position, mask=overlay)
 
 
+def load_logo_image(logo_file) -> Image.Image:
+    """Lädt ein Logo-Bild, inklusive SVG-Konvertierung nach PNG."""
+    if logo_file.type == "image/svg+xml":
+        if cairosvg is None:
+            raise RuntimeError(
+                "SVG-Unterstützung erfordert das Paket cairosvg. Bitte installiere es."
+            )
+        png_bytes = cairosvg.svg2png(url=logo_file)
+        return Image.open(io.BytesIO(png_bytes)).convert("RGBA")
+
+    return Image.open(logo_file).convert("RGBA")
+
+
 def image_to_bytes(image: Image.Image) -> bytes:
     """Gibt das Bild als PNG-Bytes zurück für den Download."""
     buffer = io.BytesIO()
@@ -121,12 +139,12 @@ def main() -> None:
     with st.sidebar:
         st.header("Uploads")
         avatar_file = st.file_uploader("Avatar hochladen", type=["png", "jpg", "jpeg"])
-        logo_file = st.file_uploader("Logo hochladen", type=["png", "jpg", "jpeg"])
+        logo_file = st.file_uploader("Logo hochladen", type=["png", "jpg", "jpeg", "svg"])
         st.markdown("---")
         st.caption("Nur die definierten Platzhalter werden dynamisch ersetzt.")
 
     avatar_image = Image.open(avatar_file) if avatar_file is not None else None
-    logo_image = Image.open(logo_file) if logo_file is not None else None
+    logo_image = load_logo_image(logo_file) if logo_file is not None else None
 
     final_image = render_composite(template_image, avatar_image, logo_image)
 
