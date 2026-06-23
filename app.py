@@ -21,12 +21,21 @@ LOGO_CONFIGS = [
 
 def load_template(path: str | None = None) -> Image.Image:
     """Lädt das statische Hintergrundbild unverändert."""
+    script_dir = Path(__file__).resolve().parent
+    default_path = script_dir / "template.png"
+    alt_path = Path.cwd() / "template.png"
+
     if path is None:
-        path = Path(__file__).parent / "template.png"
+        path = default_path
+        if not path.exists() and alt_path.exists():
+            path = alt_path
+
     template_path = Path(path)
     if not template_path.exists():
         raise FileNotFoundError(
-            f"Die Template-Datei wurde nicht gefunden: {template_path.resolve()}"
+            "Die Template-Datei wurde nicht gefunden. Erwartete Orte:\n"
+            f"- {default_path}\n"
+            f"- {alt_path}"
         )
     template = Image.open(template_path).convert("RGBA")
     return template
