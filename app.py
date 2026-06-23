@@ -79,9 +79,9 @@ def place_image(base: Image.Image, overlay: Image.Image, position: tuple[int, in
     base.paste(overlay, position, mask=overlay)
 
 
-def load_logo_image(logo_file) -> Image.Image:
-    """Lädt ein Logo-Bild, inklusive SVG-Konvertierung nach PNG."""
-    if logo_file.type == "image/svg+xml":
+def load_uploaded_image(uploaded_file) -> Image.Image:
+    """Lädt ein hochgeladenes Bild oder eine SVG-Datei als PIL-Image."""
+    if uploaded_file.type == "image/svg+xml":
         try:
             import cairosvg
         except ImportError as exc:
@@ -89,10 +89,10 @@ def load_logo_image(logo_file) -> Image.Image:
                 "SVG-Unterstützung erfordert das Paket cairosvg. Bitte installiere es."
             ) from exc
 
-        png_bytes = cairosvg.svg2png(bytestring=logo_file.read())
+        png_bytes = cairosvg.svg2png(bytestring=uploaded_file.read())
         return Image.open(io.BytesIO(png_bytes)).convert("RGBA")
 
-    return Image.open(logo_file).convert("RGBA")
+    return Image.open(uploaded_file).convert("RGBA")
 
 
 def image_to_bytes(image: Image.Image) -> bytes:
@@ -136,13 +136,17 @@ def main() -> None:
 
     with st.sidebar:
         st.header("Uploads")
-        avatar_file = st.file_uploader("Avatar hochladen", type=["png", "jpg", "jpeg"])
-        logo_file = st.file_uploader("Logo hochladen", type=["png", "jpg", "jpeg", "svg"])
+        avatar_file = st.file_uploader(
+            "Avatar hochladen", type=["png", "jpg", "jpeg", "svg"]
+        )
+        logo_file = st.file_uploader(
+            "Logo hochladen", type=["png", "jpg", "jpeg", "svg"]
+        )
         st.markdown("---")
         st.caption("Nur die definierten Platzhalter werden dynamisch ersetzt.")
 
-    avatar_image = Image.open(avatar_file) if avatar_file is not None else None
-    logo_image = load_logo_image(logo_file) if logo_file is not None else None
+    avatar_image = load_uploaded_image(avatar_file) if avatar_file is not None else None
+    logo_image = load_uploaded_image(logo_file) if logo_file is not None else None
 
     final_image = render_composite(template_image, avatar_image, logo_image)
 
