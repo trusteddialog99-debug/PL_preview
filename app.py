@@ -76,7 +76,11 @@ def fit_cover(image: Image.Image, target_size: tuple[int, int]) -> Image.Image:
 
 
 def fit_contain(image: Image.Image, target_size: tuple[int, int], padding: int = 0) -> Image.Image:
-    """Skaliert proportional in die Zielbox (wie CSS object-fit: contain)."""
+    """Skaliert proportional in die Zielbox (wie CSS object-fit: contain).
+
+    Negative Padding-Werte vergrößern das Logo leicht über die Standardfläche hinaus.
+    Positive Padding-Werte erzeugen zusätzlichen Innenabstand.
+    """
     target_w, target_h = target_size
     inner_w = max(1, target_w - 2 * padding)
     inner_h = max(1, target_h - 2 * padding)
@@ -191,10 +195,10 @@ def main() -> None:
         st.header("Feintuning")
         logo_padding = st.slider(
             "Innenabstand Logo (px)",
-            min_value=0,
+            min_value=-5,
             max_value=10,
             value=0,
-            help="Nur falls ein Logo minimal mehr Luft im pinken Rechteck braucht. Standard ist 0 für maximale Flächennutzung.",
+            help="Negative Werte vergrößern das Logo leicht über die Standardfläche hinaus, positive Werte erzeugen mehr Innenabstand.",
         )
         show_debug = st.checkbox("Platzhalter-Konturen anzeigen", value=False)
 
@@ -238,6 +242,7 @@ def main() -> None:
             """
 - **Avatare** werden per `cover` in den Kreis eingesetzt. Dadurch füllt das Motiv den kompletten Kreis ohne Verzerrung.
 - **Logos** werden per `contain` in das Rechteck eingesetzt. Dadurch bleibt das Seitenverhältnis erhalten und nichts wird abgeschnitten.
+- **Negative Werte** beim Innenabstand vergrößern das Logo leicht. So kannst du es bewusster an die volle Breite/Höhe heranführen.
 - Wenn du für das mittlere Logo lieber eine harte Verzerrung auf exakt die volle Rechteckfläche willst, kann ich dir alternativ noch einen `stretch`-Modus einbauen.
             """
         )
