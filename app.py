@@ -1,192 +1,246 @@
+
 import io
 from pathlib import Path
 
 import streamlit as st
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageOps
 
-# Feste Platzhalterkoordinaten für die Vorlage
-AVATAR_POSITION = (100, 120)
-AVATAR_SIZE = (180, 180)
-LOGO_POSITION = (400, 100)
-LOGO_SIZE = (220, 120)
+try:
+    import cairosvg
+except Exception:
+    cairosvg = None
 
-# Optional: Erweiterbar für mehrere Avatare/Logos
-AVATAR_CONFIGS = [
-    {"position": AVATAR_POSITION, "size": AVATAR_SIZE},
-]
-LOGO_CONFIGS = [
-    {"position": LOGO_POSITION, "size": LOGO_SIZE},
-]
+# ============================================================================
+# Exakt vermessene Platzhalter aus template.png
+# ============================================================================
+# Linker pinker Kreis  : x=83..127,  y=302..347  -> 45x46 px
+# Mittleres pinkes Feld: x=651..769, y=291..311  -> 119x21 px
+# Rechter pinker Kreis : x=1251..1296, y=330..375 -> 46x46 px
+SLOTS = {
+    "avatar_links": {
+        "kind": "circle",
+        "bbox": (83, 302, 127, 347),
+        "label": "Avatar links (GMX / WEB.DE / 1&1)",
+    },
+    "logo_mitte": {
+        "kind": "rect",
+        "bbox": (651, 291, 769, 311),
+        "label": "Logo Mitte (Telekom Mail / Freenet Mail)",
+    },
+    "avatar_rechts": {
+        "kind": "circle",
+        "bbox": (1251, 330, 1296, 375),
+        "label": "Avatar rechts (Darkmode / GMX Android)",
+    },
+}
 
-
-def load_template(path: str | None = None) -> Image.Image:
-    """Lädt das statische Hintergrundbild unverändert."""
-    script_dir = Path(__file__).resolve().parent
-    default_path = script_dir / "template.png"
-    alt_path = Path.cwd() / "template.png"
-
-    if path is None:
-        path = default_path
-        if not path.exists() and alt_path.exists():
-            path = alt_path
-
-    template_path = Path(path)
-    if not template_path.exists():
-        raise FileNotFoundError(
-            "Die Template-Datei wurde nicht gefunden. Erwartete Orte:\n"
-            f"- {default_path}\n"
-            f"- {alt_path}"
-        )
-    template = Image.open(template_path).convert("RGBA")
-    return template
+ALLOWED_TYPES = ["png", "jpg", "jpeg", "webp", "svg"]
 
 
-def create_circular_avatar(image: Image.Image, size: tuple[int, int]) -> Image.Image:
-    """Erzeugt ein kreisförmiges Avatarbild mit exakter Zielgröße."""
-    target_width, target_height = size
-    image = image.convert("RGBA")
-    image = image.resize((target_width, target_height), Image.LANCZOS)
+def script_dir() -> Path:
+    return Path(__file__).resolve().parent
 
-    mask = Image.new("L", (target_width, target_height), 0)
+
+def load_template() -> Image.Image:
+    path = script_dir() / "template.png"
+    if not path.exists():
+        st.error("template.png wurde nicht gefunden. Bitte im selben Ordner wie app.py ablegen.")
+        st.stop()
+    return Image.open(path).convert("RGBA")
+
+
+def read_uploaded_image(uploaded_file) -> Image.Image:
+    suffix = Path(uploaded_file.name).suffix.lower()
+    data = uploaded_file.getvalue()
+
+    if suffix == ".svg":
+        if cairosvg is None:
+            st.error(
+                "SVG-Upload benötigt das Python-Paket 'cairosvg'. Bitte in deiner Umgebung installieren: pip install cairosvg"
+            )
+            st.stop()
+        png_data = cairosvg.svg2png(bytestring=data)
+        return Image.open(io.BytesIO(png_data)).convert("RGBA")
+
+    return Image.open(io.BytesIO(data)).convert("RGBA")
+
+
+def bbox_size(bbox: tuple[int, int, int, int]) -> tuple[int, int]:
+    x0, y0, x1, y1 = bbox
+    return (x1 - x0 + 1, y1 - y0 + 1)
+
+
+def fit_cover(image: Image.Image, target_size: tuple[int, int]) -> Image.Image:
+    """Füllt die Zielgröße vollständig (wie CSS object-fit: cover)."""
+    return ImageOps.fit(image.convert("RGBA"), target_size, method=Image.LANCZOS, centering=(0.5, 0.5))
+
+
+def fit_contain(image: Image.Image, target_size: tuple[int, int], padding: int = 0) -> Image.Image:
+    """Skaliert proportional in die Zielbox (wie CSS object-fit: contain)."""
+    target_w, target_h = target_size
+    inner_w = max(1, target_w - 2 * padding)
+    inner_h = max(1, target_h - 2 * padding)
+
+    src = image.convert("RGBA")
+    src.thumbnail((inner_w, inner_h), Image.LANCZOS)
+
+    canvas = Image.new("RGBA", target_size, (0, 0, 0, 0))
+    x = (target_w - src.width) // 2
+    y = (target_h - src.height) // 2
+    canvas.paste(src, (x, y), src)
+    return canvas
+
+
+def make_circle_overlay(image: Image.Image, bbox: tuple[int, int, int, int]) -> Image.Image:
+    size = bbox_size(bbox)
+    overlay = fit_cover(image, size)
+
+    mask = Image.new("L", size, 0)
     draw = ImageDraw.Draw(mask)
-    draw.ellipse([(0, 0), (target_width, target_height)], fill=255)
+    draw.ellipse((0, 0, size[0] - 1, size[1] - 1), fill=255)
 
-    avatar = Image.new("RGBA", (target_width, target_height), (0, 0, 0, 0))
-    avatar.paste(image, (0, 0), mask=mask)
-    return avatar
-
-
-def create_logo(image: Image.Image, size: tuple[int, int]) -> Image.Image:
-    """Skaliert das Logo proportional und zentriert es in einer festen Zielgröße."""
-    max_width, max_height = size
-    image = image.convert("RGBA")
-
-    src_width, src_height = image.size
-    ratio = min(max_width / src_width, max_height / src_height)
-    target_width = int(src_width * ratio)
-    target_height = int(src_height * ratio)
-
-    logo_resized = image.resize((target_width, target_height), Image.LANCZOS)
-    logo = Image.new("RGBA", (max_width, max_height), (0, 0, 0, 0))
-    offset_x = (max_width - target_width) // 2
-    offset_y = (max_height - target_height) // 2
-    logo.paste(logo_resized, (offset_x, offset_y), mask=logo_resized)
-    return logo
+    result = Image.new("RGBA", size, (0, 0, 0, 0))
+    result.paste(overlay, (0, 0), mask)
+    return result
 
 
-def place_image(base: Image.Image, overlay: Image.Image, position: tuple[int, int]) -> None:
-    """Fügt das Overlay-Bild pixelgenau in das Basisbild ein."""
-    base.paste(overlay, position, mask=overlay)
+def make_rect_overlay(image: Image.Image, bbox: tuple[int, int, int, int], padding: int = 0) -> Image.Image:
+    size = bbox_size(bbox)
+    return fit_contain(image, size, padding=padding)
 
 
-def load_uploaded_image(uploaded_file) -> Image.Image:
-    """Lädt ein hochgeladenes Bild oder eine SVG-Datei als PIL-Image."""
-    if uploaded_file.type == "image/svg+xml":
-        try:
-            import cairosvg
-        except Exception as exc:
-            raise RuntimeError(
-                "SVG-Unterstützung erfordert das Paket cairosvg und die native Cairo-Bibliothek. "
-                "Bitte installiere diese Abhängigkeiten oder nutze eine PNG/JPG-Datei."
-            ) from exc
-
-        try:
-            png_bytes = cairosvg.svg2png(bytestring=uploaded_file.read())
-        except Exception as exc:
-            raise RuntimeError(
-                "SVG konnte nicht gerendert werden. Bitte prüfe, ob die SVG-Datei gültig ist "
-                "und dass cairosvg mit Cairo korrekt installiert ist."
-            ) from exc
-
-        return Image.open(io.BytesIO(png_bytes)).convert("RGBA")
-
-    return Image.open(uploaded_file).convert("RGBA")
+def paste_into_bbox(base: Image.Image, overlay: Image.Image, bbox: tuple[int, int, int, int]) -> None:
+    x0, y0, _, _ = bbox
+    base.paste(overlay, (x0, y0), overlay)
 
 
-def image_to_bytes(image: Image.Image) -> bytes:
-    """Gibt das Bild als PNG-Bytes zurück für den Download."""
-    buffer = io.BytesIO()
-    image.save(buffer, format="PNG")
-    return buffer.getvalue()
-
-
-def render_composite(
+def build_result(
     template: Image.Image,
-    avatar_image: Image.Image | None,
-    logo_image: Image.Image | None,
+    avatar_left: Image.Image | None,
+    logo_middle: Image.Image | None,
+    avatar_right: Image.Image | None,
+    logo_padding: int = 0,
 ) -> Image.Image:
-    """Erzeugt das finale Bild basierend auf dem statischen Template."""
     result = template.copy()
 
-    if avatar_image is not None:
-        avatar_overlay = create_circular_avatar(avatar_image, AVATAR_SIZE)
-        place_image(result, avatar_overlay, AVATAR_POSITION)
+    if avatar_left is not None:
+        overlay = make_circle_overlay(avatar_left, SLOTS["avatar_links"]["bbox"])
+        paste_into_bbox(result, overlay, SLOTS["avatar_links"]["bbox"])
 
-    if logo_image is not None:
-        logo_overlay = create_logo(logo_image, LOGO_SIZE)
-        place_image(result, logo_overlay, LOGO_POSITION)
+    if logo_middle is not None:
+        overlay = make_rect_overlay(logo_middle, SLOTS["logo_mitte"]["bbox"], padding=logo_padding)
+        paste_into_bbox(result, overlay, SLOTS["logo_mitte"]["bbox"])
+
+    if avatar_right is not None:
+        overlay = make_circle_overlay(avatar_right, SLOTS["avatar_rechts"]["bbox"])
+        paste_into_bbox(result, overlay, SLOTS["avatar_rechts"]["bbox"])
 
     return result
 
 
-def main() -> None:
-    st.set_page_config(page_title="Pixel-perfect Template Editor", layout="wide")
-    st.title("Pixel-perfekter Bild-Editor mit statischem Template")
-    st.write(
-        "Dieses Tool verwendet `template.png` als unverändertes Hintergrundbild und ersetzt nur definierte Bereiche."
-    )
+def png_bytes(image: Image.Image) -> bytes:
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+    return buf.getvalue()
 
-    try:
-        template_image = load_template()
-    except FileNotFoundError as exc:
-        st.error(str(exc))
-        return
+
+def show_debug_overlay(template: Image.Image) -> Image.Image:
+    preview = template.copy()
+    draw = ImageDraw.Draw(preview)
+
+    colors = {
+        "circle": (0, 255, 255, 255),
+        "rect": (255, 255, 0, 255),
+    }
+
+    for slot in SLOTS.values():
+        bbox = slot["bbox"]
+        color = colors[slot["kind"]]
+        if slot["kind"] == "circle":
+            draw.ellipse(bbox, outline=color, width=2)
+        else:
+            draw.rectangle(bbox, outline=color, width=2)
+    return preview
+
+
+def main() -> None:
+    st.set_page_config(page_title="Template Editor", layout="wide")
+    st.title("Template Editor – pixelgenaue Platzierung in template.png")
+    st.caption("Unterstützt PNG, JPG, WEBP und SVG. SVG-Dateien werden beim Upload sauber in PNG umgewandelt.")
+
+    template = load_template()
 
     with st.sidebar:
         st.header("Uploads")
-        avatar_file = st.file_uploader(
-            "Avatar hochladen", type=["png", "jpg", "jpeg", "svg"]
+        avatar_left_file = st.file_uploader(
+            SLOTS["avatar_links"]["label"],
+            type=ALLOWED_TYPES,
+            key="avatar_left_file",
         )
-        logo_file = st.file_uploader(
-            "Logo hochladen", type=["png", "jpg", "jpeg", "svg"]
+        logo_middle_file = st.file_uploader(
+            SLOTS["logo_mitte"]["label"],
+            type=ALLOWED_TYPES,
+            key="logo_middle_file",
         )
-        st.markdown("---")
-        st.caption("Nur die definierten Platzhalter werden dynamisch ersetzt.")
+        avatar_right_file = st.file_uploader(
+            SLOTS["avatar_rechts"]["label"],
+            type=ALLOWED_TYPES,
+            key="avatar_right_file",
+        )
 
-    avatar_image = None
-    logo_image = None
-    upload_error = None
+        st.header("Feintuning")
+        logo_padding = st.slider(
+            "Innenabstand Logo (px)",
+            min_value=0,
+            max_value=10,
+            value=0,
+            help="Nur falls ein Logo minimal mehr Luft im pinken Rechteck braucht. Standard ist 0 für maximale Flächennutzung.",
+        )
+        show_debug = st.checkbox("Platzhalter-Konturen anzeigen", value=False)
 
-    try:
-        if avatar_file is not None:
-            avatar_image = load_uploaded_image(avatar_file)
-        if logo_file is not None:
-            logo_image = load_uploaded_image(logo_file)
-    except RuntimeError as exc:
-        upload_error = str(exc)
+    avatar_left = read_uploaded_image(avatar_left_file) if avatar_left_file else None
+    logo_middle = read_uploaded_image(logo_middle_file) if logo_middle_file else None
+    avatar_right = read_uploaded_image(avatar_right_file) if avatar_right_file else None
 
-    if upload_error is not None:
-        st.error(upload_error)
-
-    final_image = render_composite(template_image, avatar_image, logo_image)
-
-    st.subheader("Vorschau")
-    st.image(final_image, use_column_width=False)
-
-    png_bytes = image_to_bytes(final_image)
-    st.download_button(
-        label="Download as PNG",
-        data=png_bytes,
-        file_name="output.png",
-        mime="image/png",
+    result = build_result(
+        template=template,
+        avatar_left=avatar_left,
+        logo_middle=logo_middle,
+        avatar_right=avatar_right,
+        logo_padding=logo_padding,
     )
 
-    st.markdown("---")
-    st.write("Konfiguration der festen Platzhalter:")
-    st.code(
-        f"AVATAR_POSITION = {AVATAR_POSITION}\nAVATAR_SIZE = {AVATAR_SIZE}\nLOGO_POSITION = {LOGO_POSITION}\nLOGO_SIZE = {LOGO_SIZE}",
-        language="python",
-    )
+    col1, col2 = st.columns([1, 1])
+
+    with col1:
+        st.subheader("Template / Debug")
+        st.image(show_debug_overlay(template) if show_debug else template, use_container_width=True)
+        st.markdown(
+            f"""**Verwendete Slots:**  
+- Avatar links: `{SLOTS['avatar_links']['bbox']}` → Größe `{bbox_size(SLOTS['avatar_links']['bbox'])}` px  
+- Logo Mitte: `{SLOTS['logo_mitte']['bbox']}` → Größe `{bbox_size(SLOTS['logo_mitte']['bbox'])}` px  
+- Avatar rechts: `{SLOTS['avatar_rechts']['bbox']}` → Größe `{bbox_size(SLOTS['avatar_rechts']['bbox'])}` px"""
+        )
+
+    with col2:
+        st.subheader("Ergebnis")
+        st.image(result, use_container_width=True)
+        st.download_button(
+            "PNG herunterladen",
+            data=png_bytes(result),
+            file_name="template_composite.png",
+            mime="image/png",
+            use_container_width=True,
+        )
+
+    with st.expander("Wichtige Hinweise"):
+        st.markdown(
+            """
+- **Avatare** werden per `cover` in den Kreis eingesetzt. Dadurch füllt das Motiv den kompletten Kreis ohne Verzerrung.
+- **Logos** werden per `contain` in das Rechteck eingesetzt. Dadurch bleibt das Seitenverhältnis erhalten und nichts wird abgeschnitten.
+- Wenn du für das mittlere Logo lieber eine harte Verzerrung auf exakt 119×21 px willst, kann ich dir alternativ noch einen `stretch`-Modus einbauen.
+            """
+        )
 
 
 if __name__ == "__main__":
