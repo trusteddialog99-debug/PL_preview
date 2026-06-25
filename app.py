@@ -11,25 +11,25 @@ except Exception:
     cairosvg = None
 
 # ============================================================================
-# Exakt vermessene Platzhalter aus template.png
+# Exakt vermessene Platzhalter aus dem AKTUELLEN template.png
 # ============================================================================
-# Linker pinker Kreis  : x=83..127,  y=302..347  -> 45x46 px
-# Mittleres pinkes Feld: x=651..769, y=291..311  -> 119x21 px
-# Rechter pinker Kreis : x=1251..1296, y=330..375 -> 46x46 px
+# Linker pinker Kreis  : x=83..127,  y=301..346  -> 45x46 px
+# Mittleres pinkes Feld: x=665..786, y=290..311  -> 122x22 px
+# Rechter pinker Kreis : x=1219..1264, y=333..377 -> 46x45 px
 SLOTS = {
     "avatar_links": {
         "kind": "circle",
-        "bbox": (83, 302, 127, 347),
+        "bbox": (83, 301, 127, 346),
         "label": "Avatar links (GMX / WEB.DE / 1&1)",
     },
     "logo_mitte": {
         "kind": "rect",
-        "bbox": (651, 291, 769, 311),
+        "bbox": (665, 290, 786, 311),
         "label": "Logo Mitte (Telekom Mail / Freenet Mail)",
     },
     "avatar_rechts": {
         "kind": "circle",
-        "bbox": (1251, 330, 1296, 375),
+        "bbox": (1219, 333, 1264, 377),
         "label": "Avatar rechts (Darkmode / GMX Android)",
     },
 }
@@ -238,7 +238,7 @@ def main() -> None:
             """
 - **Avatare** werden per `cover` in den Kreis eingesetzt. Dadurch füllt das Motiv den kompletten Kreis ohne Verzerrung.
 - **Logos** werden per `contain` in das Rechteck eingesetzt. Dadurch bleibt das Seitenverhältnis erhalten und nichts wird abgeschnitten.
-- Wenn du für das mittlere Logo lieber eine harte Verzerrung auf exakt 119×21 px willst, kann ich dir alternativ noch einen `stretch`-Modus einbauen.
+- Wenn du für das mittlere Logo lieber eine harte Verzerrung auf exakt die volle Rechteckfläche willst, kann ich dir alternativ noch einen `stretch`-Modus einbauen.
             """
         )
 
